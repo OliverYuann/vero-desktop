@@ -32,9 +32,10 @@ not because anything is wrong with them. Verify any download against
 
 ## What the app adds
 
-A menu-bar/tray icon with a quick view, a global shortcut, desktop
-notifications for your alerts, pop-out windows for a company or a ticker,
-`vero://` links, launch at login, and your session kept in the system keychain.
+A menu-bar/tray Quick View, a global shortcut that brings Vero forward with the
+command palette open, companies and tickers in their own windows, `vero://`
+links, your last watchlist and alerts shown instantly (and labelled with their
+time when you are offline), and your session kept in the system keychain.
 
 Sign in with your email and password. Nothing secret is compiled into the app:
 your data stays protected server-side exactly as it is on the web.

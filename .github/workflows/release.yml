@@ -250,8 +250,8 @@ jobs:
         working-directory: dist-release
         run: |
           set -eu
-          find . -maxdepth 1 -type f ! -name 'checksums.txt' -printf '%f\n' | sort | xargs sha256sum > .checksums.tmp
-          mv .checksums.tmp checksums.txt
+          find . -maxdepth 1 -type f ! -name 'checksums.txt' -printf '%f\n' | sort | xargs sha256sum > "$RUNNER_TEMP/checksums.txt"
+          mv "$RUNNER_TEMP/checksums.txt" checksums.txt
           cat checksums.txt
       - uses: softprops/action-gh-release@v2
         with:
