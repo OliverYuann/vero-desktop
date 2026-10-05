@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "boot-local",
+  "description": "The LOCAL boot page (dist/index.html) shown in the main window before the app origin is reachable. Reads the offline snapshot, asks Rust to probe the app origin, reports first paint, and can open an in-app path. Local only: there is no `remote` block, so this never applies once the main window is on the website \u2014 that origin gets the runtime `main-remote` capability instead (main.rs).",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-desktop-info",
+    "allow-desktop-cache-get",
+    "allow-desktop-navigate",
+    "allow-desktop-probe",
+    "allow-desktop-boot-painted",
+    "core:window:allow-start-dragging"
+  ]
+}

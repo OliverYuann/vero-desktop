@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vero</title>
+    <link rel="stylesheet" href="vero.css" />
+    <link rel="stylesheet" href="boot.css" />
+  </head>
+  <body>
+    <!--
+      Vero boot page. LOCAL: bundled into the app, no network dependencies,
+      strict CSP (tauri.conf.json app.security.csp). It paints the cached
+      workspace snapshot immediately, asks the shell to probe the app origin,
+      and is replaced by the real app the moment it answers. Offline, it stays
+      here and retries every 30 s while visible.
+    -->
+    <div class="drag" data-tauri-drag-region></div>
+    <header class="top">
+      <div class="island" id="island" data-state="connecting" role="status" aria-live="polite">
+        <img src="vero-mark.png" alt="" />
+        <span class="dot" aria-hidden="true"></span>
+        <span id="status"><strong>Vero</strong> · Connecting…</span>
+      </div>
+    </header>
+
+    <main id="snapshot" class="grid" hidden>
+      <section class="panel watch">
+        <h2>Watchlist <span class="meta num" id="wl-asof"></span></h2>
+        <ul class="rows" id="watchlist"></ul>
+      </section>
+      <div class="side">
+        <section class="panel">
+          <h2>Today's alerts</h2>
+          <ul class="rows" id="alerts"></ul>
+          <p class="empty" id="alerts-empty" hidden>No alerts today.</p>
+        </section>
+        <section class="panel">
+          <h2>Events</h2>
+          <ul class="rows" id="events"></ul>
+          <p class="empty" id="events-empty" hidden>Nothing scheduled.</p>
+        </section>
+      </div>
+    </main>
+
+    <main id="blank" class="blank">
+      <img src="vero-mark.png" alt="" class="mark" />
+      <p class="muted" id="blank-text">Opening Vero…</p>
+    </main>
+
+    <footer class="foot">
+      <p class="meta" id="foot-text"></p>
+      <div class="actions" id="actions" hidden>
+        <button class="btn" id="retry" type="button">Try again</button>
+        <button class="btn primary" id="force" type="button">Open Vero anyway</button>
+      </div>
+    </footer>
+
+    <script src="common.js"></script>
+    <script src="boot.js"></script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-debug-report"
+description = "Enables the desktop_debug_report command without any pre-configured scope."
+commands.allow = ["desktop_debug_report"]
+
+[[permission]]
+identifier = "deny-desktop-debug-report"
+description = "Denies the desktop_debug_report command without any pre-configured scope."
+commands.deny = ["desktop_debug_report"]

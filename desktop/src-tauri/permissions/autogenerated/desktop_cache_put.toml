@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-cache-put"
+description = "Enables the desktop_cache_put command without any pre-configured scope."
+commands.allow = ["desktop_cache_put"]
+
+[[permission]]
+identifier = "deny-desktop-cache-put"
+description = "Denies the desktop_cache_put command without any pre-configured scope."
+commands.deny = ["desktop_cache_put"]

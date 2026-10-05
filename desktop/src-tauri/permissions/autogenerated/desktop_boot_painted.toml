@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-boot-painted"
+description = "Enables the desktop_boot_painted command without any pre-configured scope."
+commands.allow = ["desktop_boot_painted"]
+
+[[permission]]
+identifier = "deny-desktop-boot-painted"
+description = "Denies the desktop_boot_painted command without any pre-configured scope."
+commands.deny = ["desktop_boot_painted"]

@@ -1,0 +1,62 @@
+/* Tray mini window (360×520, frameless). Tokens come from vero.css. */
+body {
+  background: var(--bg-void);
+}
+.shell {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 10px;
+}
+.head img {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  pointer-events: none;
+}
+.titles {
+  display: grid;
+  line-height: 1.25;
+  pointer-events: none;
+}
+.titles strong {
+  font-size: 14px;
+}
+.ask {
+  padding: 0 12px 10px;
+}
+.scroll {
+  overflow-y: auto;
+  padding: 0 12px 10px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.scroll::-webkit-scrollbar {
+  width: 0;
+}
+.panel h2 {
+  padding: 10px 12px 6px;
+}
+.rows {
+  padding: 0 4px 6px;
+}
+.row {
+  padding: 6px 8px;
+}
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--border-hairline);
+}

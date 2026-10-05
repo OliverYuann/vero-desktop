@@ -1,0 +1,14 @@
+{
+  "name": "vero-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Native desktop shell for Vero. Loads the deployed site; runs no backend logic locally.",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "icons": "tauri icon ../src/assets/vero-logo.png"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0"
+  }
+}

@@ -1,0 +1,353 @@
+/* Local pages of the Vero desktop app (boot page, tray mini window).
+ *
+ * No network: no web fonts, no CDN, nothing but this file. Colour values are
+ * COPIED from the web app's tokens in src/styles.css (2026-10-02) because a
+ * local page cannot load that stylesheet — keep them in sync by hand:
+ *   dark : --bg-void #08090b  --bg-surface #15171c  --bg-surface-2 #21242b
+ *          --text-primary #f5f7fa  --text-secondary #8b96a8
+ *          --text-tertiary #7f899a  --border-hairline rgba(255,255,255,.1)
+ *          --accent-electric #2f6fe0  --bullish #4a9d6b  --bearish #d4744f
+ *          --accent-gold #d4af37
+ *   light: --bg-void #f2eee7  --bg-surface #fdfcfa  --bg-surface-2 #e8e2d8
+ *          --text-primary #1c1a17  --text-secondary #5f584e
+ *          --text-tertiary #6e675c  --border-hairline rgba(28,26,23,.11)
+ *          --accent-electric #1d5bc8  --bullish #2c6b45  --bearish #93391f
+ * No new tokens: these are the same names, re-declared locally.
+ */
+
+:root {
+  color-scheme: dark light;
+  --bg-void: #08090b;
+  --bg-surface: #15171c;
+  --bg-surface-2: #21242b;
+  --text-primary: #f5f7fa;
+  --text-secondary: #8b96a8;
+  --text-tertiary: #7f899a;
+  --border-hairline: rgba(255, 255, 255, 0.1);
+  --accent-electric: #2f6fe0;
+  --accent-gold: #d4af37;
+  --bullish: #4a9d6b;
+  --bearish: #d4744f;
+  --glass: color-mix(in oklab, var(--bg-surface) 72%, transparent);
+  --rim: rgba(255, 255, 255, 0.06);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg-void: #f2eee7;
+    --bg-surface: #fdfcfa;
+    --bg-surface-2: #e8e2d8;
+    --text-primary: #1c1a17;
+    --text-secondary: #5f584e;
+    --text-tertiary: #6e675c;
+    --border-hairline: rgba(28, 26, 23, 0.11);
+    --accent-electric: #1d5bc8;
+    --bullish: #2c6b45;
+    --bearish: #93391f;
+    --glass: color-mix(in oklab, var(--bg-surface) 82%, transparent);
+    --rim: rgba(255, 255, 255, 0.7);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg-void);
+  color: var(--text-primary);
+  font:
+    14px/1.45 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI Variable Text",
+    "Segoe UI",
+    "DM Sans",
+    Inter,
+    Ubuntu,
+    Cantarell,
+    "Noto Sans",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+  overflow: hidden;
+}
+
+/* Vibrancy (macOS / Windows): the window is transparent and the OS material
+   shows through, so the page drops its opaque room. Never on Linux, and
+   never when the user asked for less transparency. */
+html.vibrant body {
+  background: color-mix(in oklab, var(--bg-void) 55%, transparent);
+}
+@media (prefers-reduced-transparency: reduce) {
+  html.vibrant body {
+    background: var(--bg-void);
+  }
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.up {
+  color: var(--bullish);
+}
+.down {
+  color: var(--bearish);
+}
+.flat {
+  color: var(--text-secondary);
+}
+
+.muted {
+  color: var(--text-secondary);
+}
+.meta {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+}
+
+.panel {
+  background: var(--glass);
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  box-shadow:
+    inset 0 1px 0 var(--rim),
+    0 18px 40px -24px rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .panel {
+    background: var(--bg-surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+.panel h2 {
+  margin: 0;
+  padding: 12px 14px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0 6px 8px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 7px 8px;
+  border-radius: 9px;
+}
+.row.click {
+  cursor: pointer;
+}
+.row.click:hover,
+.row.click:focus-visible {
+  background: color-mix(in oklab, var(--bg-surface-2) 70%, transparent);
+  outline: none;
+}
+.row .sym {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.row .name {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  margin-left: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row .lead {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row .price {
+  text-align: right;
+}
+.row .chg {
+  text-align: right;
+  min-width: 62px;
+  font-weight: 550;
+}
+
+.item {
+  padding: 7px 8px;
+  border-radius: 9px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+}
+.item .when {
+  grid-row: span 2;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  min-width: 46px;
+  padding-top: 1px;
+}
+.item .title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.item .sub {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.item.high .title::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-gold); /* high-importance signal only */
+  margin-right: 7px;
+  vertical-align: 2px;
+}
+
+.empty {
+  padding: 6px 14px 14px;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--border-hairline);
+  background: var(--bg-surface-2);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+}
+.btn:hover {
+  border-color: color-mix(in oklab, var(--text-secondary) 40%, transparent);
+}
+.btn.primary {
+  background: var(--accent-electric); /* fill role only — never blue text */
+  border-color: transparent;
+  color: #ffffff;
+}
+.btn:focus-visible,
+.field:focus-visible {
+  outline: 2px solid var(--accent-electric);
+  outline-offset: 2px;
+}
+
+.field {
+  width: 100%;
+  border: 1px solid var(--border-hairline);
+  background: color-mix(in oklab, var(--bg-surface-2) 80%, transparent);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.field::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* The status island — the same centred pill the web app navigates with. */
+.island {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 14px 7px 8px;
+  border-radius: 999px;
+  background: var(--glass);
+  border: 1px solid var(--border-hairline);
+  box-shadow:
+    inset 0 1px 0 var(--rim),
+    0 10px 30px -18px rgba(0, 0, 0, 0.6);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.island img {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+.island .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+}
+.island[data-state="connecting"] .dot,
+.island[data-state="opening"] .dot {
+  background: var(--accent-electric);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.island[data-state="offline"] .dot {
+  background: var(--bearish);
+}
+.island strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.skeleton {
+  height: 12px;
+  border-radius: 6px;
+  margin: 10px 14px;
+  background: color-mix(in oklab, var(--bg-surface-2) 85%, transparent);
+}
+.skeleton.w60 {
+  width: 60%;
+}
+.skeleton.w40 {
+  width: 40%;
+}
+.skeleton.w75 {
+  width: 75%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-tray-hide"
+description = "Enables the desktop_tray_hide command without any pre-configured scope."
+commands.allow = ["desktop_tray_hide"]
+
+[[permission]]
+identifier = "deny-desktop-tray-hide"
+description = "Denies the desktop_tray_hide command without any pre-configured scope."
+commands.deny = ["desktop_tray_hide"]

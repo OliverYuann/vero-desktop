@@ -1,0 +1,6 @@
+node_modules/
+src-tauri/target/
+src-tauri/gen/
+# The repo-root .gitignore ignores every `dist`; this one is source (the
+# local boot page and tray mini window), so it must be tracked.
+!dist/

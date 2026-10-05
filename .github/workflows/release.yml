@@ -1,0 +1,271 @@
+# Builds the Vero desktop app for macOS (universal), Windows (x64) and Linux
+# (x64) and publishes the installers as a GitHub Release of THIS repository.
+#
+#   · push a tag `v<version>` (matching desktop/src-tauri/tauri.conf.json)
+#     → build all three, then publish the release with checksums.txt
+#   · workflow_dispatch → build all three as a check; nothing is released
+#
+# desktop/ is mirrored from Vero's private repository (scripts/
+# sync-desktop-public.sh there); edit it there, not here.
+# Builds are not code-signed yet: no signing secrets exist in this repo.
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Check version consistency
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        shell: bash
+        run: |
+          set -eu
+          conf=$(node -p "require('./desktop/src-tauri/tauri.conf.json').version")
+          pkg=$(node -p "require('./desktop/package.json').version")
+          cargo=$(awk '/^\[package\]/{p=1;next} /^\[/{p=0} p && /^version[[:space:]]*=/{gsub(/[" ]/,"");sub(/^version=/,"");print;exit}' desktop/src-tauri/Cargo.toml)
+          echo "tauri.conf.json=$conf Cargo.toml=$cargo package.json=$pkg"
+          [ "$cargo" = "$conf" ] || { echo "::error::Cargo.toml ($cargo) != tauri.conf.json ($conf)"; exit 1; }
+          [ "$pkg" = "$conf" ] || { echo "::error::package.json ($pkg) != tauri.conf.json ($conf)"; exit 1; }
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tag="${{ github.ref_name }}"
+            [ "${tag#v}" = "$conf" ] || { echo "::error::Tag $tag does not match version $conf"; exit 1; }
+          fi
+          echo "version=$conf" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.label }}
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            rust_targets: x86_64-pc-windows-msvc
+
+          - label: macos-universal
+            os: macos-latest
+            target: universal-apple-darwin
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+          - label: linux-x64
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            rust_targets: x86_64-unknown-linux-gnu
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux WebView dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+          key: ${{ matrix.label }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install desktop CLI deps
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build
+        working-directory: desktop
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: npm run build -- --target ${{ matrix.target }}
+
+      - name: Fail if a signing key was written to the working tree
+        shell: bash
+        run: |
+          set -eu
+          export LC_ALL=C
+          files=$(git ls-files --cached --others --exclude-standard)
+          if [ -z "$files" ]; then
+            echo "::error::git listed no files; the key check would pass vacuously."
+            exit 1
+          fi
+          hits=$(printf '%s\n' "$files" | tr '\n' '\0' \
+            | xargs -0 grep -l -I -e 'rsign encrypted secret ke[y]' \
+                                  -e 'minisign encrypted secret ke[y]' 2>/dev/null || true)
+          if [ -n "$hits" ]; then
+            echo "::error::A private signing key is present in the checkout:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "No signing key material in the working tree ($(printf '%s\n' "$files" | wc -l) files checked)."
+
+      - name: Fail if the binary contains anything key-shaped
+        shell: bash
+        run: |
+          set -eu
+          export LC_ALL=C
+          root="desktop/src-tauri/target"
+          bins=""
+          for c in \
+            "$root/${{ matrix.target }}/release/vero-desktop" \
+            "$root/${{ matrix.target }}/release/vero-desktop.exe" \
+            "$root/aarch64-apple-darwin/release/vero-desktop" \
+            "$root/x86_64-apple-darwin/release/vero-desktop"
+          do
+            [ -f "$c" ] && bins="$bins $c"
+          done
+          if [ -z "$bins" ]; then
+            echo "::error::No built binary found under $root; the scan cannot pass vacuously."
+            ls -R "$root" | head -100 || true
+            exit 1
+          fi
+          hits=0
+          for bin in $bins; do
+            echo "--- scanning $bin"
+            for pat in 'sk_live_' 'sk_test_' 'whsec_' 'SERVICE_ROLE' 'service_role' 'eyJhbGciOi' 'rsign encrypted secret ke[y]' 'minisign encrypted secret ke[y]'; do
+              n=$(grep -a -c -e "$pat" "$bin" || true)
+              case "$n" in
+                ''|*[!0-9]*)
+                  echo "::error::grep failed on $bin for '$pat' (got '$n'). Treating as a failure."
+                  exit 1
+                  ;;
+              esac
+              echo "  $pat: $n"
+              hits=$((hits + n))
+            done
+          done
+          if [ "$hits" -ne 0 ]; then
+            echo "::error::Secret-shaped strings found in the desktop binary. Do not ship this."
+            exit 1
+          fi
+
+      - name: Collect installers
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p dist-release
+          base="desktop/src-tauri/target/${{ matrix.target }}/release/bundle"
+          found=0
+          for pat in \
+            "$base"/nsis/*.exe \
+            "$base"/msi/*.msi \
+            "$base"/dmg/*.dmg \
+            "$base"/deb/*.deb \
+            "$base"/rpm/*.rpm \
+            "$base"/appimage/*.AppImage
+          do
+            for f in $pat; do
+              [ -e "$f" ] || continue
+              case "$f" in *.sig) continue ;; esac
+              cp "$f" dist-release/
+              found=$((found + 1))
+            done
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "::error::No installers were produced for ${{ matrix.target }}."
+            ls -R "$base" || true
+            exit 1
+          fi
+
+          sigs=0
+          for pat in \
+            "$base"/macos/*.app.tar.gz \
+            "$base"/macos/*.app.tar.gz.sig \
+            "$base"/nsis/*.exe.sig \
+            "$base"/msi/*.msi.sig \
+            "$base"/appimage/*.AppImage.sig
+          do
+            for f in $pat; do
+              [ -e "$f" ] || continue
+              cp "$f" dist-release/
+              sigs=$((sigs + 1))
+            done
+          done
+          echo "installers=$found updater-artifacts=$sigs"
+          if [ "$sigs" -eq 0 ]; then
+            echo "::notice::No updater artifacts for ${{ matrix.target }}. Auto-update stays off until desktop/src-tauri/tauri.conf.json sets bundle.createUpdaterArtifacts=true."
+          fi
+          ls -l dist-release
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vero-desktop-${{ matrix.label }}
+          if-no-files-found: error
+          retention-days: 14
+          path: dist-release/*
+
+  release:
+    name: Publish GitHub Release
+    needs: [preflight, build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release in this repository; nothing else
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: vero-desktop-*
+          merge-multiple: true
+          path: dist-release
+      - name: SHA-256 checksums
+        working-directory: dist-release
+        run: |
+          set -eu
+          find . -maxdepth 1 -type f ! -name 'checksums.txt' -printf '%f\n' | sort | xargs sha256sum > .checksums.tmp
+          mv .checksums.tmp checksums.txt
+          cat checksums.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Vero ${{ needs.preflight.outputs.version }}
+          files: dist-release/*
+          fail_on_unmatched_files: true
+          make_latest: true
+          body: |
+            Vero for desktop ${{ needs.preflight.outputs.version }} — your Vero account in its own window on macOS, Windows and Linux.
+
+            **Download:** https://www.verostocks.com/download (or pick a file below).
+
+            | Platform | File |
+            | --- | --- |
+            | macOS 10.15+ (Apple silicon and Intel) | `Vero_${{ needs.preflight.outputs.version }}_universal.dmg` |
+            | Windows 10/11 (64-bit) | `Vero_${{ needs.preflight.outputs.version }}_x64-setup.exe` (or the `.msi`) |
+            | Linux x64 (glibc 2.39+) | `Vero_${{ needs.preflight.outputs.version }}_amd64.AppImage` (or the `.deb`) |
+
+            **Not code-signed yet**, so your system warns the first time:
+            - **macOS:** open the app once, click **Done**, then **System Settings → Privacy & Security → Open Anyway**.
+            - **Windows:** "Windows protected your PC" → **More info → Run anyway**.
+            - **Linux:** `chmod +x Vero_*.AppImage`, then run it.
+
+            Sign in with your email and password. Verify downloads against `checksums.txt`.

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-secure-get"
+description = "Enables the desktop_secure_get command without any pre-configured scope."
+commands.allow = ["desktop_secure_get"]
+
+[[permission]]
+identifier = "deny-desktop-secure-get"
+description = "Denies the desktop_secure_get command without any pre-configured scope."
+commands.deny = ["desktop_secure_get"]

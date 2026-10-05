@@ -1,0 +1,95 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Vero",
+  "version": "1.0.0",
+  "identifier": "com.verostocks.desktop",
+  "build": {
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Vero",
+        "url": "index.html",
+        "create": false,
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "center": true,
+        "resizable": true,
+        "fullscreen": false,
+        "focus": true,
+        "backgroundColor": "#08090B"
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data:",
+        "font-src": "'self'",
+        "connect-src": "ipc: http://ipc.localhost",
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "form-action": "'none'",
+        "frame-src": "'none'",
+        "frame-ancestors": "'none'"
+      },
+      "capabilities": [
+        "boot-local",
+        "tray-local"
+      ]
+    },
+    "withGlobalTauri": true,
+    "macOSPrivateApi": true
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "vero"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis",
+      "msi",
+      "app",
+      "dmg",
+      "deb",
+      "appimage"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Finance",
+    "shortDescription": "AI stock intelligence for everyday investors",
+    "longDescription": "Vero explains what actually moved the stocks you own, and tests your investment thesis against real events. This desktop app is a native window onto verostocks.com \u2014 your account, data and subscription are the same as on the web.",
+    "copyright": "\u00a9 Vero",
+    "publisher": "Vero",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "signingIdentity": "-"
+    },
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    }
+  }
+}

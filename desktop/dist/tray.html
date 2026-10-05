@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vero</title>
+    <link rel="stylesheet" href="vero.css" />
+    <link rel="stylesheet" href="tray.css" />
+  </head>
+  <body>
+    <!--
+      Tray / menu-bar mini window. LOCAL page, strict CSP, no network: it only
+      reads the snapshot the web app cached (desktop_cache_get) and asks the
+      shell to open the main window at an in-app path (desktop_navigate).
+    -->
+    <div class="shell">
+      <header class="head">
+        <img src="vero-mark.png" alt="" />
+        <div class="titles">
+          <strong>Vero</strong>
+          <span class="meta num" id="asof">No saved data yet</span>
+        </div>
+      </header>
+
+      <form id="ask" class="ask" autocomplete="off">
+        <input
+          id="q"
+          class="field"
+          type="text"
+          maxlength="300"
+          placeholder="Ask the Assistant…"
+          aria-label="Ask the Assistant"
+        />
+      </form>
+
+      <div class="scroll">
+        <section class="panel">
+          <h2>Watchlist</h2>
+          <ul class="rows" id="watchlist"></ul>
+          <p class="empty" id="watchlist-empty" hidden>Open Vero once while online to see your watchlist here.</p>
+        </section>
+        <section class="panel">
+          <h2>Today</h2>
+          <ul class="rows" id="alerts"></ul>
+          <ul class="rows" id="events"></ul>
+          <p class="empty" id="today-empty" hidden>No alerts or events today.</p>
+        </section>
+      </div>
+
+      <footer class="foot">
+        <span class="meta" id="note">Cached · prices not live</span>
+        <button class="btn primary" id="open" type="button">Open Vero</button>
+      </footer>
+    </div>
+    <script src="common.js"></script>
+    <script src="tray.js"></script>
+  </body>
+</html>

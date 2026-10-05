@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "tray-local",
+  "description": "The tray / menu-bar mini window (dist/tray.html). A local page with a strict CSP: reads the cached watchlist/alerts/events, opens the main window at an in-app path (Open Vero, the quick Assistant box), and hides itself. Nothing else — no keychain, no settings, no notifications, no plugins.",
+  "windows": ["tray"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-desktop-info",
+    "allow-desktop-cache-get",
+    "allow-desktop-navigate",
+    "allow-desktop-tray-hide"
+  ]
+}
