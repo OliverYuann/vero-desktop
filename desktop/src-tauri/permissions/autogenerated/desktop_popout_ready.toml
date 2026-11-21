@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-popout-ready"
+description = "Enables the desktop_popout_ready command without any pre-configured scope."
+commands.allow = ["desktop_popout_ready"]
+
+[[permission]]
+identifier = "deny-desktop-popout-ready"
+description = "Denies the desktop_popout_ready command without any pre-configured scope."
+commands.deny = ["desktop_popout_ready"]

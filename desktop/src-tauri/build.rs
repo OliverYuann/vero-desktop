@@ -20,6 +20,12 @@ const COMMANDS: &[&str] = &[
     "desktop_secure_remove",
     "desktop_get_settings",
     "desktop_set_settings",
+    // the company pop-out (rework F-006): pop-outs + the main window's flags
+    "desktop_popout_ready",
+    "desktop_popout_resize",
+    "desktop_popout_close",
+    "desktop_show_in_main",
+    "desktop_set_web_flags",
     // local pages only (boot page, tray mini window)
     "desktop_navigate",
     "desktop_probe",

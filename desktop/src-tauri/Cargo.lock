@@ -4990,7 +4990,7 @@ dependencies = [
 
 [[package]]
 name = "vero-desktop"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "keyring",
  "serde",

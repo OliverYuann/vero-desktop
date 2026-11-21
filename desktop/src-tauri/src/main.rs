@@ -31,6 +31,8 @@ mod nav;
 mod secure;
 mod store;
 mod tray;
+#[cfg(feature = "updater")]
+mod updater;
 mod validate;
 
 use std::sync::atomic::Ordering;
@@ -58,6 +60,8 @@ const MAIN_REMOTE_PERMISSIONS: &[&str] = &[
     "allow-desktop-secure-remove",
     "allow-desktop-get-settings",
     "allow-desktop-set-settings",
+    // Rework F-006: which web flags the shell honours (vero://stock links).
+    "allow-desktop-set-web-flags",
     // The bridge listens for vero://navigate & co.
     "core:event:allow-listen",
     "core:event:allow-unlisten",
@@ -69,7 +73,29 @@ const MAIN_REMOTE_PERMISSIONS: &[&str] = &[
     "core:window:allow-set-theme",
     "core:window:allow-set-background-color",
     "core:webview:allow-set-webview-background-color",
+    // Island V2's integrated title bar (flag `island_v2`,
+    // src/components/island-v2/desktop-titlebar.tsx): the page switches the
+    // native bar off (Windows/Linux) or to Overlay (macOS) and draws the
+    // caption buttons itself. MAIN WINDOW ONLY, and only these window verbs.
+    "core:window:allow-set-decorations",
+    "core:window:allow-set-title-bar-style",
+    "core:window:allow-set-shadow",
+    "core:window:allow-is-maximized",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
 ];
+
+/// What the window-state plugin saves and restores: size, position,
+/// maximized/fullscreen — but never VISIBLE (the main window stays hidden until
+/// the boot page paints, or for --hidden) and never DECORATIONS. The web app
+/// turns the native title bar off while its own (Island V2) is mounted; if that
+/// were persisted, the next launch's boot page — which draws no window
+/// controls — would open with no title bar to drag or close by.
+fn window_state_flags() -> tauri_plugin_window_state::StateFlags {
+    use tauri_plugin_window_state::StateFlags;
+    StateFlags::all() & !StateFlags::VISIBLE & !StateFlags::DECORATIONS
+}
 
 /// Commands the app origin may call from a POP-OUT window: the same web app
 /// (so it needs the session store and the cache), but no notifications,
@@ -83,6 +109,12 @@ const POPOUT_REMOTE_PERMISSIONS: &[&str] = &[
     "allow-desktop-secure-get",
     "allow-desktop-secure-set",
     "allow-desktop-secure-remove",
+    // Rework F-006: the company pop-out shows, resizes and closes ITSELF, and
+    // can send the main window to the full company page.
+    "allow-desktop-popout-ready",
+    "allow-desktop-popout-resize",
+    "allow-desktop-popout-close",
+    "allow-desktop-show-in-main",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "core:window:allow-start-dragging",
@@ -189,12 +221,10 @@ fn main() {
             tauri_plugin_window_state::Builder::default()
                 // The tray window is positioned at the icon every time.
                 .with_denylist(&[tray::TRAY_WINDOW])
-                // Never let a restored state SHOW a window: the main window
-                // stays hidden until the boot page paints, or for --hidden.
-                .with_state_flags(
-                    tauri_plugin_window_state::StateFlags::all()
-                        & !tauri_plugin_window_state::StateFlags::VISIBLE,
-                )
+                // Never let a restored state SHOW a window (the main window
+                // stays hidden until the boot page paints, or for --hidden),
+                // and never restore DECORATIONS — see `window_state_flags`.
+                .with_state_flags(window_state_flags())
                 .build(),
         )
         .plugin(tauri_plugin_autostart::init(
@@ -214,8 +244,9 @@ fn main() {
         );
 
     // Auto-updater: compiled only with `--features updater`, and inert until
-    // tauri.conf.json carries `plugins.updater` (pubkey + endpoints). Neither
-    // exists today, deliberately. See README "Auto-update" / SIGNING.md.
+    // the build carries `plugins.updater` (pubkey + endpoints). Both live in
+    // tauri.updater.conf.json, which CI merges in (`--config`) only when the
+    // updater signing secret exists. See README "Auto-update" / SIGNING.md §3.
     #[cfg(feature = "updater")]
     {
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
@@ -232,6 +263,11 @@ fn main() {
             app::desktop_set_badge,
             app::desktop_open_window,
             app::desktop_set_always_on_top,
+            app::desktop_popout_ready,
+            app::desktop_popout_resize,
+            app::desktop_popout_close,
+            app::desktop_show_in_main,
+            app::desktop_set_web_flags,
             app::desktop_secure_get,
             app::desktop_secure_set,
             app::desktop_secure_remove,
@@ -282,6 +318,14 @@ fn main() {
                         desk(app).settings.lock().unwrap().tray && app::feature_on("tray");
                     if tray_on || cfg!(target_os = "macos") {
                         api.prevent_close();
+                        // Hiding is not an exit, so the window-state plugin
+                        // would only write the size and position at quit.
+                        // Save now: a crash or a forced shutdown later still
+                        // reopens the window where the user left it.
+                        {
+                            use tauri_plugin_window_state::AppHandleExt;
+                            let _ = app.save_window_state(window_state_flags());
+                        }
                         let _ = window.hide();
                     } else {
                         app.exit(0);
@@ -314,9 +358,12 @@ fn main() {
         .on_menu_event(|app, event| menu::handle(app, event.id.as_ref()))
         .setup(move |app| {
             let handle = app.handle().clone();
+            #[cfg(feature = "updater")]
+            updater::spawn_check(handle.clone());
             let config_dir = app.path().app_config_dir()?;
             let settings = store::load_settings(&config_dir);
             app.manage(Desk::new(t0, flags.hidden, settings.clone()));
+            *desk(&handle).web_flags.lock().unwrap() = store::load_web_flags(&config_dir);
 
             // ── Remote capabilities: the app origin, and only it ────────────
             let patterns = nav::remote_url_patterns(nav::app_origin());
@@ -418,4 +465,34 @@ fn main() {
             app::consume_pending_notification(app);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn window_state_never_restores_visibility_or_decorations() {
+        use tauri_plugin_window_state::StateFlags;
+        let f = window_state_flags();
+        assert!(!f.contains(StateFlags::VISIBLE));
+        assert!(!f.contains(StateFlags::DECORATIONS));
+        assert!(f.contains(StateFlags::SIZE));
+        assert!(f.contains(StateFlags::POSITION));
+        assert!(f.contains(StateFlags::MAXIMIZED));
+    }
+
+    #[test]
+    fn title_bar_verbs_are_main_window_only() {
+        for perm in [
+            "core:window:allow-set-decorations",
+            "core:window:allow-set-title-bar-style",
+            "core:window:allow-minimize",
+            "core:window:allow-toggle-maximize",
+            "core:window:allow-close",
+        ] {
+            assert!(MAIN_REMOTE_PERMISSIONS.contains(&perm), "{perm} missing for main");
+            assert!(!POPOUT_REMOTE_PERMISSIONS.contains(&perm), "{perm} leaked to pop-outs");
+        }
+    }
 }

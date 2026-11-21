@@ -103,5 +103,7 @@
   } catch (_) {
     /* the 2 s fallback in the shell shows the window anyway */
   }
+  // The window is on screen now: let the content fade/scale in (boot.css).
+  document.documentElement.classList.replace("opening", "opened");
   probe();
 })();

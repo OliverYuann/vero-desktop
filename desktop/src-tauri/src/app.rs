@@ -98,6 +98,9 @@ pub struct Desk {
     pub tray_hidden_at: Mutex<Option<Instant>>,
     /// Pop-out label → kind, for `desktop_info().window_kind`.
     pub popout_kinds: Mutex<std::collections::HashMap<String, &'static str>>,
+    /// Web flags the shell honours (rework F-006): `popout_v2` decides what a
+    /// `vero://stock/…` link opens. Loaded from disk at start.
+    pub web_flags: Mutex<store::WebFlags>,
     securestore: OnceLock<bool>,
 }
 
@@ -116,6 +119,7 @@ impl Desk {
             hotkey: Mutex::new(None),
             tray_hidden_at: Mutex::new(None),
             popout_kinds: Mutex::new(std::collections::HashMap::new()),
+            web_flags: Mutex::new(store::WebFlags::default()),
             securestore: OnceLock::new(),
         }
     }
@@ -214,6 +218,27 @@ pub fn handle_deep_link<R: Runtime>(app: &AppHandle<R>, raw: &str) {
         }
         reveal(app);
         return;
+    }
+    // Rework F-006: with the web flag `popout_v2`, a stock link opens that
+    // ticker's pop-out window instead of the company page in the main window.
+    if desk(app).web_flags.lock().unwrap().popout_v2 {
+        if let Some(t) = target
+            .path()
+            .strip_prefix("/company/")
+            .and_then(|t| validate::ticker(t).ok())
+        {
+            if raw.to_ascii_lowercase().starts_with("vero://stock/") {
+                eprintln!("[vero] deep link → pop-out {t}");
+                let app = app.clone();
+                // Never build a window inside the link callback itself.
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = open_popout(&app, &format!("/popout/stock/{t}"), WindowKind::Stock) {
+                        eprintln!("[vero] {e}");
+                    }
+                });
+                return;
+            }
+        }
     }
     eprintln!("[vero] deep link → {}", nav::path_of(&target));
     navigate_main(app, nav::path_of(&target));
@@ -318,6 +343,18 @@ pub fn build_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Webvie
 }
 
 fn popout_label(kind: WindowKind, path: &str) -> String {
+    // One window per ticker for the company pop-out, under a readable label
+    // that is stable across runs (its geometry is remembered per ticker).
+    if kind == WindowKind::Stock {
+        if let Some(t) = validate::stock_popout_ticker(path) {
+            return validate::stock_popout_label(&t);
+        }
+    }
+    if kind == WindowKind::Agent {
+        if let Some(id) = validate::agent_popout_id(path) {
+            return validate::agent_popout_label(&id);
+        }
+    }
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     kind.as_str().hash(&mut h);
@@ -348,16 +385,26 @@ pub fn open_popout<R: Runtime>(
     let url = nav::app_url_for(path).ok_or("path: unparsable")?;
     let (w, h, min_w, min_h) = kind.geometry();
     let title = match kind {
-        WindowKind::Company => "Vero — Company",
-        WindowKind::Chart => "Vero — Chart",
-        WindowKind::Panel => "Vero",
-        WindowKind::Ticker => "Vero — Ticker",
+        WindowKind::Company => "Vero — Company".to_string(),
+        WindowKind::Chart => "Vero — Chart".to_string(),
+        WindowKind::Panel => "Vero".to_string(),
+        WindowKind::Ticker => "Vero — Ticker".to_string(),
+        WindowKind::Stock => validate::stock_popout_ticker(path)
+            .map(|t| format!("{t} · Vero"))
+            .unwrap_or_else(|| "Vero".into()),
+        WindowKind::Agent => "Agent · Vero".to_string(),
     };
+    // Pages that report their own first paint start hidden (see below).
+    let stock = matches!(kind, WindowKind::Stock | WindowKind::Agent);
     #[allow(unused_mut)]
     let mut builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(url))
         .title(title)
         .inner_size(w, h)
         .min_inner_size(min_w, min_h)
+        // The company pop-out starts hidden and is shown by the page once its
+        // first frame is painted (`desktop_popout_ready`), so the first thing
+        // anyone sees is the designed window opening, never a blank webview.
+        .visible(!stock)
         .always_on_top(kind == WindowKind::Ticker)
         .initialization_script(marker_script(kind.as_str()))
         .on_navigation(on_navigation_policy(app.clone()))
@@ -379,7 +426,31 @@ pub fn open_popout<R: Runtime>(
         .lock()
         .unwrap()
         .insert(label.clone(), kind.as_str());
+    if stock {
+        // Fallback: a page that never reports its paint (offline, an error
+        // page) still gets its window shown.
+        let fallback = app.clone();
+        let l = label.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(2500));
+            if let Some(w) = fallback.get_webview_window(&l) {
+                if !w.is_visible().unwrap_or(true) {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+        });
+    }
     Ok(label)
+}
+
+/// A pop-out window (label `pop-*`), or an error naming the caller.
+fn require_popout<R: Runtime>(w: &tauri::WebviewWindow<R>) -> Result<(), String> {
+    if w.label().starts_with("pop-") {
+        Ok(())
+    } else {
+        Err("only a pop-out window may call this".into())
+    }
 }
 
 // ── Notifications / badge ───────────────────────────────────────────────────
@@ -756,6 +827,75 @@ pub fn desktop_set_always_on_top<R: Runtime>(
     on: bool,
 ) -> Result<(), String> {
     window.set_always_on_top(on).map_err(|e| e.to_string())
+}
+
+/// 5c. `desktop_popout_ready()` — the CALLING pop-out has painted: show it.
+#[tauri::command(rename_all = "snake_case")]
+pub fn desktop_popout_ready<R: Runtime>(window: tauri::WebviewWindow<R>) -> Result<(), String> {
+    require_popout(&window)?;
+    if !window.is_visible().unwrap_or(false) {
+        window.show().map_err(|e| e.to_string())?;
+        let _ = window.set_focus();
+    }
+    Ok(())
+}
+
+/// 5d. `desktop_popout_resize(size)` — the CALLING pop-out, to one of the
+/// three designed sizes (compact | regular | expanded).
+#[tauri::command(rename_all = "snake_case")]
+pub fn desktop_popout_resize<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    size: String,
+) -> Result<(), String> {
+    require_popout(&window)?;
+    let (w, h) = validate::PopoutSize::parse(&size)?.geometry();
+    let _ = window.unmaximize();
+    window
+        .set_size(tauri::LogicalSize::new(w, h))
+        .map_err(|e| e.to_string())
+}
+
+/// 5e. `desktop_popout_close()` — close the CALLING pop-out.
+#[tauri::command(rename_all = "snake_case")]
+pub fn desktop_popout_close<R: Runtime>(window: tauri::WebviewWindow<R>) -> Result<(), String> {
+    require_popout(&window)?;
+    window.close().map_err(|e| e.to_string())
+}
+
+/// 5f. `desktop_show_in_main(path)` — a pop-out's "open in the main app":
+/// the main window goes to a validated in-app path and comes forward.
+#[tauri::command(rename_all = "snake_case")]
+pub fn desktop_show_in_main<R: Runtime>(
+    app: AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
+    path: String,
+) -> Result<(), String> {
+    require_popout(&window)?;
+    let path = nav::validate_app_path(&path)?;
+    navigate_main(&app, path);
+    reveal(&app);
+    Ok(())
+}
+
+/// 5g. `desktop_set_web_flags({popout_v2})` — main window only: which web
+/// flags the shell honours natively. Persisted for cold starts.
+#[tauri::command(rename_all = "snake_case")]
+pub fn desktop_set_web_flags<R: Runtime>(
+    app: AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
+    popout_v2: bool,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("only the main window may call this".into());
+    }
+    let next = store::WebFlags { popout_v2 };
+    let d = desk(&app);
+    let changed = *d.web_flags.lock().unwrap() != next;
+    if changed {
+        store::save_web_flags(&config_dir(&app)?, &next)?;
+        *d.web_flags.lock().unwrap() = next;
+    }
+    Ok(())
 }
 
 /// 6. Keychain. `sb-*` keys only, values ≤ 16 KB.

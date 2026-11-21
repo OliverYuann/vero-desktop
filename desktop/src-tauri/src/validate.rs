@@ -118,6 +118,12 @@ pub enum WindowKind {
     Chart,
     Panel,
     Ticker,
+    /// The purpose-built company pop-out (`/popout/stock/<T>`, rework F-006):
+    /// one window per ticker, created hidden and shown by the page.
+    Stock,
+    /// A floating agent window detached from the Island (`/popout/agent/<uuid>`,
+    /// F-019): one window per agent, created hidden and shown by the page.
+    Agent,
 }
 
 impl WindowKind {
@@ -127,10 +133,12 @@ impl WindowKind {
             "chart" => Self::Chart,
             "panel" => Self::Panel,
             "ticker" => Self::Ticker,
+            "stock" => Self::Stock,
+            "agent" => Self::Agent,
             // `page` is what src/lib/desktop-v2/tauri.ts sends for a generic
             // route; it gets the company-sized window.
             "page" => Self::Company,
-            _ => return Err("kind: expected company|chart|panel|ticker|page".into()),
+            _ => return Err("kind: expected company|chart|panel|ticker|stock|agent|page".into()),
         })
     }
 
@@ -140,6 +148,8 @@ impl WindowKind {
             Self::Chart => "chart",
             Self::Panel => "panel",
             Self::Ticker => "ticker",
+            Self::Stock => "stock",
+            Self::Agent => "agent",
         }
     }
 
@@ -150,8 +160,74 @@ impl WindowKind {
             Self::Chart => (960.0, 620.0, 480.0, 320.0),
             Self::Panel => (460.0, 720.0, 320.0, 360.0),
             Self::Ticker => (360.0, 132.0, 240.0, 96.0),
+            // The regular size; min = the compact ticker card's floor.
+            Self::Stock => (440.0, 760.0, 300.0, 220.0),
+            // The web window's regular size (pop-geometry.ts WIN_DIM); the
+            // floor is its compact card.
+            Self::Agent => (380.0, 560.0, 300.0, 240.0),
         }
     }
+}
+
+/// The company pop-out's three designed sizes (rework F-006). Mirrors
+/// `POPOUT_WINDOW` in src/components/popout/stock-popout.tsx.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PopoutSize {
+    Compact,
+    Regular,
+    Expanded,
+}
+
+impl PopoutSize {
+    pub fn parse(s: &str) -> Result<Self, String> {
+        Ok(match s {
+            "compact" => Self::Compact,
+            "regular" => Self::Regular,
+            "expanded" => Self::Expanded,
+            _ => return Err("size: expected compact|regular|expanded".into()),
+        })
+    }
+
+    /// (width, height) in logical pixels.
+    pub fn geometry(self) -> (f64, f64) {
+        match self {
+            Self::Compact => (340.0, 240.0),
+            Self::Regular => (440.0, 760.0),
+            Self::Expanded => (980.0, 760.0),
+        }
+    }
+}
+
+/// The ticker in a stock pop-out path (`/popout/stock/NVDA`), validated.
+pub fn stock_popout_ticker(path: &str) -> Option<String> {
+    let rest = path.strip_prefix("/popout/stock/")?;
+    let t = rest.split(['?', '#']).next().unwrap_or("");
+    ticker(t).ok()
+}
+
+/// A window label for a ticker's pop-out: `pop-stock-nvda` (labels allow
+/// `[A-Za-z0-9-/:_]`, so `BRK.B` becomes `pop-stock-brk_b`). Stable across
+/// runs, so the window-state plugin restores each ticker's own geometry.
+pub fn stock_popout_label(ticker: &str) -> String {
+    format!("pop-stock-{}", ticker.to_ascii_lowercase().replace('.', "_"))
+}
+
+/// The agent id in an agent pop-out path (`/popout/agent/<uuid>`), validated
+/// as a lowercase hyphenated UUID so it can be part of a window label.
+pub fn agent_popout_id(path: &str) -> Option<String> {
+    let rest = path.strip_prefix("/popout/agent/")?;
+    let id = rest.split(['?', '#']).next().unwrap_or("");
+    let ok = id.len() == 36
+        && id.bytes().enumerate().all(|(i, b)| match i {
+            8 | 13 | 18 | 23 => b == b'-',
+            _ => b.is_ascii_digit() || (b'a'..=b'f').contains(&b),
+        });
+    ok.then(|| id.to_string())
+}
+
+/// `pop-agent-<uuid>`: one window per agent, stable across runs.
+pub fn agent_popout_label(id: &str) -> String {
+    format!("pop-agent-{id}")
 }
 
 /// Keychain keys: Supabase auth storage keys only (`sb-…`), ≤ 128 chars,
@@ -289,8 +365,42 @@ mod tests {
     }
 
     #[test]
+    fn popout_sizes_and_labels() {
+        for (k, w) in [("compact", 340.0), ("regular", 440.0), ("expanded", 980.0)] {
+            assert_eq!(PopoutSize::parse(k).unwrap().geometry().0, w);
+        }
+        assert!(PopoutSize::parse("huge").is_err());
+        assert!(PopoutSize::parse("").is_err());
+        assert_eq!(stock_popout_ticker("/popout/stock/NVDA").as_deref(), Some("NVDA"));
+        assert_eq!(stock_popout_ticker("/popout/stock/BRK.B?size=compact").as_deref(), Some("BRK.B"));
+        assert_eq!(stock_popout_ticker("/popout/stock/nvda"), None);
+        assert_eq!(stock_popout_ticker("/popout/stock/../x"), None);
+        assert_eq!(stock_popout_ticker("/company/NVDA"), None);
+        assert_eq!(stock_popout_label("NVDA"), "pop-stock-nvda");
+        assert_eq!(stock_popout_label("BRK.B"), "pop-stock-brk_b");
+        let (w, h, min_w, min_h) = WindowKind::Stock.geometry();
+        assert!(w >= min_w && h >= min_h);
+        let (cw, ch) = PopoutSize::Compact.geometry();
+        assert!(cw >= min_w && ch >= min_h, "compact must not be below the window floor");
+    }
+
+    #[test]
+    fn agent_popout_paths_and_labels() {
+        let id = "8bd9d4a2-1f3e-4c0a-9a0b-4a1d2f6c7e88";
+        assert_eq!(agent_popout_id(&format!("/popout/agent/{id}")).as_deref(), Some(id));
+        assert_eq!(agent_popout_id(&format!("/popout/agent/{id}?x=1")).as_deref(), Some(id));
+        assert_eq!(agent_popout_id("/popout/agent/../../pricing"), None);
+        assert_eq!(agent_popout_id("/popout/agent/8BD9D4A2-1F3E-4C0A-9A0B-4A1D2F6C7E88"), None);
+        assert_eq!(agent_popout_id("/popout/agent/"), None);
+        assert_eq!(agent_popout_id("/popout/stock/NVDA"), None);
+        assert_eq!(agent_popout_label(id), format!("pop-agent-{id}"));
+        let (w, h, min_w, min_h) = WindowKind::Agent.geometry();
+        assert!(w >= min_w && h >= min_h);
+    }
+
+    #[test]
     fn window_kinds() {
-        for k in ["company", "chart", "panel", "ticker"] {
+        for k in ["company", "chart", "panel", "ticker", "stock", "agent"] {
             assert_eq!(WindowKind::parse(k).unwrap().as_str(), k);
         }
         assert_eq!(WindowKind::parse("page").unwrap(), WindowKind::Company);

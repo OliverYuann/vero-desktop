@@ -48,11 +48,12 @@ pub const IN_APP_PATHS: &[&str] = &[
     "/cookies",
     "/disclaimer",
     // The authenticated product — one entry per top-level route under
-    // `src/routes/_authenticated/` (checked 2026-10-02).
+    // `src/routes/_authenticated/` (checked 2026-11-21).
     "/account",
     "/admin",
     "/alerts",
     "/article",
+    "/asset",
     "/assistant",
     "/company",
     "/dashboard",

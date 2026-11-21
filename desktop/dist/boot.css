@@ -77,3 +77,32 @@ body {
 .blank[hidden] {
   display: none;
 }
+
+/* THE WINDOW OPENS WITH A FADE AND A SLIGHT SCALE (F-006 Part 2). The window
+   is created invisible and shown when boot.js reports the first paint; the
+   content starts transparent (`html.opening`, set in index.html) and settles
+   in once the window is on screen (`html.opened`, boot.js) — 320ms on the
+   large-surface curve. If boot.js never runs, the delayed fallback below
+   reveals the content anyway, so nothing can stay hidden. */
+@keyframes vero-window-open {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+html.opening body > :not(.drag) {
+  opacity: 0;
+  animation: vero-window-open 320ms cubic-bezier(0.16, 1, 0.3, 1) 1500ms both;
+}
+html.opened body > :not(.drag) {
+  animation: vero-window-open 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.opening body > :not(.drag) {
+    opacity: 1;
+  }
+}

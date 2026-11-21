@@ -120,6 +120,35 @@ pub fn save_settings(config_dir: &Path, s: &Settings) -> Result<(), String> {
         .map_err(|e| format!("settings write failed: {e}"))
 }
 
+/// Web-app flags the shell honours natively (rework F-006). Reported by the
+/// main window's web bridge (`desktop_set_web_flags`) and kept on disk so a
+/// cold start BY a `vero://stock/…` link already knows the answer. Its own
+/// file, so the settings IPC contract is untouched.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WebFlags {
+    /// `vero://stock/NVDA` opens the company pop-out window (flag `popout_v2`)
+    /// instead of the company page in the main window.
+    pub popout_v2: bool,
+}
+
+pub fn web_flags_path(config_dir: &Path) -> PathBuf {
+    config_dir.join("web-flags.json")
+}
+
+pub fn load_web_flags(config_dir: &Path) -> WebFlags {
+    std::fs::read(web_flags_path(config_dir))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_web_flags(config_dir: &Path, f: &WebFlags) -> Result<(), String> {
+    let bytes = serde_json::to_vec_pretty(f).map_err(|e| e.to_string())?;
+    write_atomic(&web_flags_path(config_dir), &bytes)
+        .map_err(|e| format!("web flags write failed: {e}"))
+}
+
 /// ISO-8601 UTC timestamp without pulling in a date crate.
 pub fn now_iso() -> String {
     let secs = SystemTime::now()
@@ -174,6 +203,17 @@ mod tests {
         assert!(cache_get(&dir, CacheKind::Alerts).is_none());
         cache_clear(&dir).unwrap();
         assert!(cache_get(&dir, CacheKind::Watchlist).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn web_flags_default_off_and_round_trip() {
+        let dir = std::env::temp_dir().join(format!("vero-flags-test-{}", std::process::id()));
+        assert!(!load_web_flags(&dir).popout_v2, "a missing file means off");
+        save_web_flags(&dir, &WebFlags { popout_v2: true }).unwrap();
+        assert!(load_web_flags(&dir).popout_v2);
+        let f: WebFlags = serde_json::from_str("{}").unwrap();
+        assert!(!f.popout_v2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
